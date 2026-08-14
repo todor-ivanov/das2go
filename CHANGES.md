@@ -1,3 +1,7 @@
+### **v4.7.42 to v04.07.43rc1:**
+  - Add url escapes for rucio paths (Todor Ivanov) [#87](https://github.com/dmwm/das2go/pull/87)
+
+
 ### **v04.07.42 to v4.7.42:**
 
 
