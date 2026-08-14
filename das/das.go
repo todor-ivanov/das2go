@@ -351,6 +351,7 @@ func FormRESTUrl(dasquery dasql.DASQuery, dasmap mongo.DASRecord) string {
 
 	spec := dasquery.Spec
 	skeys := utils.MapKeys(spec)
+	system, _ := dasmap["system"].(string)
 	base, ok := dasmap["url"].(string)
 	if !ok {
 		log.Println("Unable to extract url from DAS map", dasmap)
@@ -373,6 +374,13 @@ func FormRESTUrl(dasquery dasql.DASQuery, dasmap mongo.DASRecord) string {
 				val, _ := spec[dkey].(string)
 				matched, _ := regexp.MatchString(pat, val)
 				if matched || pat == "" {
+					if system == "rucio" {
+						// Rucio expects the DID scope and name to be separated by
+						// one literal slash. Slashes within the DID name must stay
+						// encoded for servers configured with AllowEncodedSlashes
+						// NoDecode.
+						val = url.QueryEscape(val)
+					}
 					if strings.HasPrefix(val, "/") {
 						if strings.HasSuffix(base, "/") {
 							return base[0:len(base)-1] + val
