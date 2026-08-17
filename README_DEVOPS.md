@@ -1,4 +1,87 @@
-# devops.mk
+# DAS development operations
+
+This document covers the manual Docker image workflow in the main `Makefile` and
+the DAS fast development loop provided by `devops.mk`.
+
+## Manual Docker image workflow
+
+The main `Makefile` builds and publishes DAS images as:
+
+```
+registry.cern.ch/cmsweb/das-server:<tag>
+```
+
+Docker, `curl`, and `tar` must be available locally. Run the commands from the
+`das2go` source tree.
+
+Build an image from the current local source tree:
+
+```
+make docker build localtree
+make docker build dev
+```
+
+Build a release or release-candidate image using the production DAS Dockerfile:
+
+```
+make docker build v04.07.42
+make docker build v04.07.43rc1
+```
+
+The accepted tags are `localtree`, `dev`, and release tags matching
+`v<major>.<minor>.<patch>` with an optional `rc<number>` suffix. The leading `v`
+is optional.
+
+Push an existing local image to the CERN registry:
+
+```
+make docker push dev
+make docker push v04.07.42
+```
+
+The push target verifies that the image exists locally and runs `docker login`
+before publishing it. Stable releases also publish `<release-tag>-stable`.
+Release candidates, `dev`, and `localtree` do not receive a stable alias.
+
+Assignment-based targets are also supported:
+
+```
+make docker-build TAG=dev
+make docker-push TAG=dev
+make upload TAG=v04.07.42
+```
+
+`upload` builds and then pushes the selected tag.
+
+### CMSKubernetes image source
+
+The Dockerfiles and runtime script are downloaded from the repository and branch
+selected by `CONFIG_REPO` and `CONFIG_BRANCH`. The current defaults point to the
+feature branch containing the DAS development Dockerfile:
+
+```
+CONFIG_REPO=https://github.com/todor-ivanov/CMSKubernetes
+CONFIG_BRANCH=feature_AddDasDockerfileDev_fix-89
+```
+
+After `docker/das-server/Dockerfile.dev` is merged upstream, use:
+
+```
+make docker build dev \
+  CONFIG_REPO=https://github.com/dmwm/CMSKubernetes \
+  CONFIG_BRANCH=master
+```
+
+The isolated build context is stored under `.docker.build/` and is ignored by Git.
+For `localtree` and `dev`, the current source tree is staged there without Git,
+Codex, temporary, or previously built content.
+
+The `:dev` image is intended to provide the baseline runtime for the Kubernetes
+development Deployment. `devpush` remains responsible for building and copying the
+current local DAS executable and runtime payload into the development pod; it does
+not build or push an image automatically.
+
+## Kubernetes fast development loop
 
 `devops.mk` provides helper targets for the DAS fast development loop in Kubernetes.
 
@@ -85,6 +168,12 @@ make -f devops.mk mapsrevert
 ```
 
 ## Important paths
+
+Local Docker build context:
+
+```
+.docker.build/
+```
 
 Local temporary workspace:
 

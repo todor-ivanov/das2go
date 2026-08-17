@@ -42,6 +42,9 @@ go get gopkg.in/mgo.v2
 make
 ```
 
+See [README_DEVOPS.md](README_DEVOPS.md) for manual Docker image build/push and
+Kubernetes development workflows.
+
 It will build ```das2go``` executable which you can fetch from UNIX shell.
 By default it serves requests on localhost:8000,
 feel free to modify code accoringly.
