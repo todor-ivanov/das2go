@@ -8,6 +8,8 @@ PROJECT ?= cmsweb
 REPOSITORY ?= das-server
 IMAGE ?= $(REGISTRY)/$(PROJECT)/$(REPOSITORY)
 DOCKER_BUILD_DIR ?= .docker.build
+CONFIG_REPO ?= https://github.com/todor-ivanov/CMSKubernetes
+CONFIG_BRANCH ?= feature_AddDasDockerfileDev_fix-89
 
 DOCKER_ACTION := $(word 2,$(MAKECMDGOALS))
 DOCKER_REF := $(word 3,$(MAKECMDGOALS))
@@ -60,11 +62,11 @@ docker-build:
 			build_mode="tag" ;; \
 	esac; \
 	mkdir -p "$(DOCKER_BUILD_DIR)"; \
-	curl -kfsSL https://raw.githubusercontent.com/dmwm/CMSKubernetes/master/docker/das-server/Dockerfile -o "$(DOCKER_BUILD_DIR)/Dockerfile"; \
-	curl -kfsSL https://raw.githubusercontent.com/dmwm/CMSKubernetes/master/docker/das-server/run.sh -o "$(DOCKER_BUILD_DIR)/run.sh"; \
+	curl -kfsSL $(CONFIG_REPO)/raw/$(CONFIG_BRANCH)/docker/das-server/Dockerfile -o "$(DOCKER_BUILD_DIR)/Dockerfile"; \
+	curl -kfsSL $(CONFIG_REPO)/raw/$(CONFIG_BRANCH)/docker/das-server/run.sh -o "$(DOCKER_BUILD_DIR)/run.sh"; \
 	chmod +x "$(DOCKER_BUILD_DIR)/run.sh"; \
 	if [ "$$build_mode" = "dev" ]; then \
-		curl -kfsSL https://raw.githubusercontent.com/dmwm/CMSKubernetes/master/docker/das-server/Dockerfile.dev -o "$(DOCKER_BUILD_DIR)/Dockerfile.dev"; \
+		curl -kfsSL $(CONFIG_REPO)/raw/$(CONFIG_BRANCH)/docker/das-server/Dockerfile.dev -o "$(DOCKER_BUILD_DIR)/Dockerfile.dev"; \
 		source_dir="$(DOCKER_BUILD_DIR)/src"; \
 		source_tmp="$(DOCKER_BUILD_DIR)/src.tmp"; \
 		source_archive="$(DOCKER_BUILD_DIR)/src.tar"; \
