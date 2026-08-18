@@ -8,8 +8,8 @@ PROJECT ?= cmsweb
 REPOSITORY ?= das-server
 IMAGE ?= $(REGISTRY)/$(PROJECT)/$(REPOSITORY)
 DOCKER_BUILD_DIR ?= .docker.build
-CONFIG_REPO ?= https://github.com/todor-ivanov/CMSKubernetes
-CONFIG_BRANCH ?= feature_AddDasDockerfileDev_fix-89
+CONFIG_REPO ?= https://github.com/dmwm/CMSKubernetes
+CONFIG_BRANCH ?= master
 
 DOCKER_ACTION := $(word 2,$(MAKECMDGOALS))
 DOCKER_REF := $(word 3,$(MAKECMDGOALS))
