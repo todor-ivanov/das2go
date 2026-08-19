@@ -17,7 +17,6 @@ CONFIG_DIR = $(TMP_DIR)/CMSKubernetes
 # DAS service variables:
 NAMESPACE = das
 DAS_SERVERS = das-server
-DAS_HPA_SERVERS = das-server
 DEVOPS_TARGETS = devinit devpush devscale devrevert devstatus
 DEVOPS_TARGET := $(firstword $(MAKECMDGOALS))
 DAS_SERVER_WAS_SET := $(if $(filter undefined,$(origin DAS_SERVER)),,1)
@@ -45,6 +44,7 @@ DAS_SERVER_MANIFEST = $(CONFIG_DIR)/kubernetes/cmsweb/services/$(DAS_SERVER).yam
 DAS_SERVER_DEV_MANIFEST = $(CONFIG_DIR)/kubernetes/cmsweb/services/$(DAS_SERVER_DEV).yaml
 DAS_SERVER_HPA = $(DAS_SERVER)-hpa
 DAS_HPA_MANIFEST = $(CONFIG_DIR)/kubernetes/cmsweb/hpa/das-hpa.yaml
+DAS_ORIGINAL_REPLICAS_ANNOTATION = das2go.dev/original-replicas
 
 # Positional arguments appear to Make as additional goals; define inert targets for them.
 ifneq (,$(filter $(DEVOPS_TARGET),$(DEVOPS_TARGETS)))
@@ -223,15 +223,40 @@ run_dev_init:
 		exit 1; \
 	}
 	@kubectl -n $(NAMESPACE) get deployment $(DAS_SERVER) && \
-		kubectl -n $(NAMESPACE) get hpa $(DAS_SERVER_HPA) && \
 		kubectl -n $(NAMESPACE) get service das-mongo $(DAS_SERVER) && \
 		kubectl -n $(NAMESPACE) get secret $(DAS_SERVER)-secrets \
 			proxy-secrets robot-secrets hmac-secrets token-secrets
 
-	# Constrain the HPA-managed regular deployment to a single pod.
-	@echo ">>> Constraining hpa/$(DAS_SERVER_HPA) to a single pod:"
-	@kubectl -n $(NAMESPACE) patch hpa $(DAS_SERVER_HPA) \
-		-p '{"spec":{"minReplicas":1,"maxReplicas":1}}'
+	# Follow the DBS controller split: constrain an HPA when present, otherwise scale the Deployment directly.
+	@set -eu; \
+	hpa_resource=$$(kubectl -n $(NAMESPACE) get hpa $(DAS_SERVER_HPA) --ignore-not-found -o name); \
+	if [ -n "$$hpa_resource" ]; then \
+		echo ">>> Constraining hpa/$(DAS_SERVER_HPA) to a single pod:"; \
+		kubectl -n $(NAMESPACE) patch hpa $(DAS_SERVER_HPA) \
+			-p '{"spec":{"minReplicas":1,"maxReplicas":1}}'; \
+	else \
+		original_replicas=$$(kubectl -n $(NAMESPACE) get deployment $(DAS_SERVER) \
+			-o jsonpath='{.spec.replicas}'); \
+		[[ "$$original_replicas" =~ ^[0-9]+$$ ]] || { \
+			echo "ERROR: Invalid replica count [ $$original_replicas ] for deployment/$(DAS_SERVER)."; \
+			exit 1; \
+		}; \
+		saved_replicas=$$(kubectl -n $(NAMESPACE) get deployment $(DAS_SERVER) \
+			-o go-template='{{with index .metadata.annotations "$(DAS_ORIGINAL_REPLICAS_ANNOTATION)"}}{{.}}{{end}}'); \
+		if [ -z "$$saved_replicas" ]; then \
+			echo ">>> Preserving deployment/$(DAS_SERVER) replica count [ $$original_replicas ] in annotation $(DAS_ORIGINAL_REPLICAS_ANNOTATION)."; \
+			kubectl -n $(NAMESPACE) annotate deployment $(DAS_SERVER) \
+				$(DAS_ORIGINAL_REPLICAS_ANNOTATION)="$$original_replicas"; \
+		else \
+			[[ "$$saved_replicas" =~ ^[0-9]+$$ ]] || { \
+				echo "ERROR: Invalid saved replica count [ $$saved_replicas ] in annotation $(DAS_ORIGINAL_REPLICAS_ANNOTATION)."; \
+				exit 1; \
+			}; \
+			echo ">>> Preserving existing original replica count [ $$saved_replicas ]."; \
+		fi; \
+		echo ">>> Scaling deployment/$(DAS_SERVER) to a single pod:"; \
+		kubectl -n $(NAMESPACE) scale deployment/$(DAS_SERVER) --replicas=1; \
+	fi
 	@kubectl -n $(NAMESPACE) rollout status deployment/$(DAS_SERVER) --timeout=180s
 
 	@echo ">>> Bringing up $(DAS_SERVER_DEV) development container..."
@@ -300,22 +325,41 @@ run_dev_redirect:
 		-p '{"spec":{"selector":{"app":"$(DAS_SERVER_DEV)"}}}'
 
 run_dev_revert:
-	@echo ">>> Restoring hpa/$(DAS_SERVER_HPA) from $(DAS_HPA_MANIFEST)..."
 	@set -eu; \
-	limits=$$(awk -v target="$(DAS_SERVER_HPA)" ' \
-		$$1 == "name:" && $$2 == target { selected=1 } \
-		selected && $$1 == "minReplicas:" { min_replicas=$$2 } \
-		selected && $$1 == "maxReplicas:" { max_replicas=$$2 } \
-		selected && min_replicas != "" && max_replicas != "" { print min_replicas, max_replicas; exit } \
-		' $(DAS_HPA_MANIFEST)); \
-	read -r min_replicas max_replicas <<< "$$limits"; \
-	[ -n "$$min_replicas" ] && [ -n "$$max_replicas" ] || { \
-		echo "ERROR: Could not read $(DAS_SERVER_HPA) limits from $(DAS_HPA_MANIFEST)."; \
-		exit 1; \
-	}; \
-	echo ">>> Restoring hpa/$(DAS_SERVER_HPA) replica limits to $$min_replicas/$$max_replicas..."; \
-	kubectl -n $(NAMESPACE) patch hpa $(DAS_SERVER_HPA) \
-		-p "{\"spec\":{\"minReplicas\":$$min_replicas,\"maxReplicas\":$$max_replicas}}"
+	saved_replicas=$$(kubectl -n $(NAMESPACE) get deployment $(DAS_SERVER) \
+		-o go-template='{{with index .metadata.annotations "$(DAS_ORIGINAL_REPLICAS_ANNOTATION)"}}{{.}}{{end}}'); \
+	if [ -n "$$saved_replicas" ]; then \
+		[[ "$$saved_replicas" =~ ^[0-9]+$$ ]] || { \
+			echo "ERROR: Invalid saved replica count [ $$saved_replicas ] in annotation $(DAS_ORIGINAL_REPLICAS_ANNOTATION)."; \
+			exit 1; \
+		}; \
+		echo ">>> Restoring deployment/$(DAS_SERVER) to $$saved_replicas replica(s)..."; \
+		kubectl -n $(NAMESPACE) scale deployment/$(DAS_SERVER) --replicas="$$saved_replicas"; \
+		kubectl -n $(NAMESPACE) rollout status deployment/$(DAS_SERVER) --timeout=180s; \
+		kubectl -n $(NAMESPACE) annotate deployment $(DAS_SERVER) \
+			$(DAS_ORIGINAL_REPLICAS_ANNOTATION)-; \
+	else \
+		hpa_resource=$$(kubectl -n $(NAMESPACE) get hpa $(DAS_SERVER_HPA) --ignore-not-found -o name); \
+		if [ -n "$$hpa_resource" ]; then \
+			echo ">>> Restoring hpa/$(DAS_SERVER_HPA) from $(DAS_HPA_MANIFEST)..."; \
+			limits=$$(awk -v target="$(DAS_SERVER_HPA)" ' \
+				$$1 == "name:" && $$2 == target { selected=1 } \
+				selected && $$1 == "minReplicas:" { min_replicas=$$2 } \
+				selected && $$1 == "maxReplicas:" { max_replicas=$$2 } \
+				selected && min_replicas != "" && max_replicas != "" { print min_replicas, max_replicas; exit } \
+				' $(DAS_HPA_MANIFEST)); \
+			read -r min_replicas max_replicas <<< "$$limits"; \
+			[ -n "$$min_replicas" ] && [ -n "$$max_replicas" ] || { \
+				echo "ERROR: Could not read $(DAS_SERVER_HPA) limits from $(DAS_HPA_MANIFEST)."; \
+				exit 1; \
+			}; \
+			echo ">>> Restoring hpa/$(DAS_SERVER_HPA) replica limits to $$min_replicas/$$max_replicas..."; \
+			kubectl -n $(NAMESPACE) patch hpa $(DAS_SERVER_HPA) \
+				-p "{\"spec\":{\"minReplicas\":$$min_replicas,\"maxReplicas\":$$max_replicas}}"; \
+		else \
+			echo ">>> No saved direct-scaling state or hpa/$(DAS_SERVER_HPA); leaving deployment/$(DAS_SERVER) replicas unchanged."; \
+		fi; \
+	fi
 	@echo ">>> Reverting $(DAS_SERVER) traffic for $(ENV):"
 	@set -eu; \
 	selector=$$(awk -v target="$(DAS_SERVER)" ' \
