@@ -10,8 +10,8 @@ DAS2GO_SRC := $(shell pwd)
 
 # Configuration variables:
 TMP_DIR = $(DAS2GO_SRC)/tmp
-CONFIG_REPO = https://github.com/todor-ivanov/CMSKubernetes.git
-CONFIG_BRANCH = feature_AddDasDockerfileDev_fix-89
+CONFIG_REPO = https://github.com/dmwm/CMSKubernetes.git
+CONFIG_BRANCH = master
 CONFIG_DIR = $(TMP_DIR)/CMSKubernetes
 
 # DAS service variables:
