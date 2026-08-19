@@ -148,6 +148,16 @@ setup_config:
 	else \
 		echo ">>> Repository exists. Fetching updates and switching to branch [ $(CONFIG_BRANCH) ]..."; \
 		cd $(CONFIG_DIR) && \
+		current_origin=$$(git remote get-url origin 2>/dev/null || true) && \
+		if [ "$$current_origin" != "$(CONFIG_REPO)" ]; then \
+			if [ -n "$$current_origin" ]; then \
+				echo ">>> Updating configuration repository origin from [ $$current_origin ] to [ $(CONFIG_REPO) ]..."; \
+				git remote set-url origin $(CONFIG_REPO); \
+			else \
+				echo ">>> Adding missing configuration repository origin [ $(CONFIG_REPO) ]..."; \
+				git remote add origin $(CONFIG_REPO); \
+			fi; \
+		fi && \
 		git fetch origin && \
 		git checkout $(CONFIG_BRANCH) && \
 		git pull origin $(CONFIG_BRANCH); \
