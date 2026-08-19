@@ -18,7 +18,6 @@ CONFIG_DIR = $(TMP_DIR)/CMSKubernetes
 NAMESPACE = das
 DAS_SERVERS = das-server
 DAS_HPA_SERVERS = das-server
-DAS_ALLOWED_CONTEXTS = cmsweb-test1 cmsweb-test5
 DEVOPS_TARGETS = devinit devpush devscale devrevert devstatus
 DEVOPS_TARGET := $(firstword $(MAKECMDGOALS))
 DAS_SERVER_WAS_SET := $(if $(filter undefined,$(origin DAS_SERVER)),,1)
@@ -128,12 +127,11 @@ confirm_deploy: check_kubectl
 		echo "ERROR: Expected exactly one configured Kubernetes context, found: [ $(ENV) ]"; \
 		exit 1; \
 	fi
-	@case " $(DAS_ALLOWED_CONTEXTS) " in \
-		*" $(ENV) "*) ;; \
-		*) echo "ERROR: Environment [ $(ENV) ] is not allowed for this development workflow."; \
-		   echo "Allowed environments: $(DAS_ALLOWED_CONTEXTS)"; \
-		   exit 1 ;; \
-	esac
+	@{ [ "$(ENV)" = "cmsweb-testbed-backend" ] || \
+		[[ "$(ENV)" =~ ^cmsweb-test[0-9]+[0-9]*$$ ]]; } || { \
+		echo "ERROR: Environment [ $(ENV) ] is not allowed for this development workflow."; \
+		exit 1; \
+	}
 	@printf "Are you sure you want to proceed? [y/N]: " && read ans < /dev/tty; \
 	if [ "$$ans" != "y" ] && [ "$$ans" != "Y" ]; then \
 		echo "Deployment aborted by user."; \
